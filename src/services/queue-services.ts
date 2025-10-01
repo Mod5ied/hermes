@@ -1,17 +1,18 @@
 import axios from "axios";
-import { WorkerTask } from "../models/tasks";
 import { config } from "../config/environment";
+import { sendEmail, EmailClient } from "../utils/email-wrapper";
+import { AnnouncementPayload, BulkUpdatePayload, EmailDispatchPayload, MediaProcessingPayload, NotificationPayload, ServiceRoutingPayload, WorkerTask } from "../models/tasks";
 
 // Handle different types of tasks
-export async function handleTask(task: any): Promise<void> {
+export async function handleTask(task: WorkerTask): Promise<void> {
   const workerTask: WorkerTask = {
     id: task.id,
     type: task.type,
     payload: task.payload,
     tenantId: task.tenantId,
     serviceId: task.serviceId,
-    createdAt: task.timestamp,
-    priority: task.payload.priority || 'normal'
+    createdAt: task.createdAt,
+    priority: task.priority || 'normal'
   };
 
   console.log(`Handling task ${workerTask.id} of type ${workerTask.type} from service ${workerTask.serviceId} for tenant ${workerTask.tenantId}`);
@@ -55,20 +56,22 @@ export async function handleTask(task: any): Promise<void> {
 async function handleEmailDispatch(task: WorkerTask): Promise<void> {
   console.log(`Handling email dispatch task: ${task.id}`);
   
-  const { recipientEmail, subject, body, attachments } = task.payload;
+  const payload = task.payload as EmailDispatchPayload;
+  const { recipientEmail, subject, body, attachments, emailClient } = payload;
   
   try {
-    // In a real implementation, this would integrate with an email service
-    // like SendGrid, Mailgun, or AWS SES
-    console.log(`Sending email to ${recipientEmail} with subject: ${subject}`);
+    // Send email using the email wrapper
+    const emailParams = {
+      to: Array.isArray(recipientEmail) ? recipientEmail : [recipientEmail],
+      subject,
+      html: body,
+      ...(attachments && { attachments })
+    };
+
+    // Determine which email client to use based on the payload
+    const client: EmailClient = emailClient || 'brevo';
     
-    // This is a placeholder for email sending logic
-    // const result = await emailService.send({
-    //   to: recipientEmail,
-    //   subject,
-    //   html: body,
-    //   attachments
-    // });
+    await sendEmail(emailParams, client);
     
     console.log(`Email sent successfully for task: ${task.id}`);
   } catch (error) {
@@ -80,7 +83,8 @@ async function handleEmailDispatch(task: WorkerTask): Promise<void> {
 async function handleMediaProcessing(task: WorkerTask): Promise<void> {
   console.log(`Handling media processing task: ${task.id}`);
   
-  const { mediaUrl, mediaType, processingOptions } = task.payload;
+  const payload = task.payload as MediaProcessingPayload;
+  const { mediaUrl, mediaType, processingOptions } = payload;
   
   try {
     // In a real implementation, this would:
@@ -107,7 +111,8 @@ async function handleMediaProcessing(task: WorkerTask): Promise<void> {
 async function handleServiceRouting(task: WorkerTask): Promise<void> {
   console.log(`Handling service routing task: ${task.id}`);
   
-  const { targetService, endpoint, data, method = 'POST' } = task.payload;
+  const payload = task.payload as ServiceRoutingPayload;
+  const { targetService, endpoint, data, method = 'POST', timeout = 10000 } = payload;
   
   try {
     // This handles routing service-to-service API calls
@@ -125,6 +130,9 @@ async function handleServiceRouting(task: WorkerTask): Promise<void> {
       case 'hestia':
         targetUrl = config.hestiaApiUrl;
         break;
+      case 'janus':
+        targetUrl = config.janusGatewayUrl;
+        break;
       default:
         throw new Error(`Unknown target service: ${targetService}`);
     }
@@ -139,7 +147,7 @@ async function handleServiceRouting(task: WorkerTask): Promise<void> {
         'x-service-id': task.serviceId, // Identity of the original service making the request
         'content-type': 'application/json'
       },
-      timeout: 10000 // 10 second timeout
+      timeout: timeout
     });
     
     console.log(`Service routing completed for task: ${task.id}`, response.status);
@@ -155,7 +163,8 @@ async function handleServiceRouting(task: WorkerTask): Promise<void> {
 async function handleNotification(task: WorkerTask): Promise<void> {
   console.log(`Handling notification task: ${task.id}`);
   
-  const { recipientId, recipientType, title, body, data } = task.payload;
+  const payload = task.payload as NotificationPayload;
+  const { recipientId, recipientType, title, body, data } = payload;
   
   try {
     // In a real implementation, this would send push notifications via FCM or APNs
@@ -163,6 +172,7 @@ async function handleNotification(task: WorkerTask): Promise<void> {
     
     // Placeholder for push notification logic
     // This might involve sending to Firebase Cloud Messaging or Apple Push Notification Service
+    console.log(`Notification data:`, data);
     
     console.log(`Notification sent successfully for task: ${task.id}`);
   } catch (error) {
@@ -175,16 +185,62 @@ async function handleNotification(task: WorkerTask): Promise<void> {
 async function handleAnnouncement(task: WorkerTask): Promise<void> {
   console.log(`Handling announcement task: ${task.id}`);
   
-  const { recipientType, title, body, targetGroup } = task.payload;
+  const payload = task.payload as AnnouncementPayload;
+  const { title, body, targetGroup, emailClient } = payload;
   
   try {
-    // Logic to send announcements to all users of a particular type or target group
-    console.log(`Sending announcement to ${recipientType} group: ${targetGroup}`);
+    // Query the database for all emails of the targetGroup
+    // This will require calling relevant services to get user emails
+    let emails: string[] = [];
     
-    // Placeholder for announcement logic
-    // This would iterate through all users in the target group and send the notification
+    switch (targetGroup) {
+      case 'Staff':
+        // Call the Hera (Staff Management) service to get all staff emails
+        console.log('Querying Hera service for all staff emails...');
+        const staffResponse = await axios.get(`${config.heraApiUrl}/api/v1/staff/emails`, {
+          headers: { 
+            'x-tenant-id': task.tenantId,
+            'x-service-id': task.serviceId
+          }
+        });
+        emails = staffResponse.data.emails || [];
+        break;
+        
+      case 'Guardians':
+        // Call the Hestia (Guardian Management) service to get all guardian emails
+        console.log('Querying Hestia service for all guardian emails...');
+        const guardianResponse = await axios.get(`${config.hestiaApiUrl}/api/v1/guardians/emails`, {
+          headers: { 
+            'x-tenant-id': task.tenantId,
+            'x-service-id': task.serviceId
+          }
+        });
+        emails = guardianResponse.data.emails || [];
+        break;
+        
+      default:
+        throw new Error(`Invalid target group: ${targetGroup}. Must be 'Staff' or 'Guardians'`);
+    }
     
-    console.log(`Announcement sent successfully for task: ${task.id}`);
+    if (emails.length === 0) {
+      console.log(`No emails found for target group: ${targetGroup}`);
+      return;
+    }
+    
+    // Prepare email parameters for batch sending
+    const emailParams = {
+      to: emails,
+      subject: title,
+      html: body
+    };
+
+    // Determine which email client to use based on the payload
+    const client: EmailClient = emailClient || 'brevo';
+    
+    // Send batch email using the email wrapper
+    await sendEmail(emailParams, client);
+    
+    console.log(`Announcement sent successfully to ${emails.length} recipients in ${targetGroup} group for task: ${task.id}`);
   } catch (error) {
     console.error(`Failed to send announcement for task ${task.id}:`, error);
     throw error;
@@ -195,18 +251,60 @@ async function handleAnnouncement(task: WorkerTask): Promise<void> {
 async function handleBulkUpdate(task: WorkerTask): Promise<void> {
   console.log(`Handling bulk update task: ${task.id}`);
   
-  const { targetService, endpoint, updateData, filter } = task.payload;
+  const payload = task.payload as BulkUpdatePayload;
+  const { targetService, endpoint, updateData, filter } = payload;
   
   try {
     // Logic to perform bulk updates across multiple entities
     console.log(`Performing bulk update on ${targetService} with filter:`, filter);
     
-    // Placeholder for bulk update logic
-    // This would call the target service to perform bulk operations
+    let targetUrl = '';
+    switch (targetService) {
+      case 'athena':
+        targetUrl = config.athenaApiUrl;
+        break;
+      case 'apollo':
+        targetUrl = config.apolloApiUrl;
+        break;
+      case 'zeus':
+        targetUrl = config.zeusApiUrl;
+        break;
+      case 'hestia':
+        targetUrl = config.hestiaApiUrl;
+        break;
+      case 'hera':
+        targetUrl = config.heraApiUrl;
+        break;
+      case 'janus':
+        targetUrl = config.janusGatewayUrl;
+        break;
+      default:
+        throw new Error(`Unknown target service: ${targetService}`);
+    }
     
-    console.log(`Bulk update completed successfully for task: ${task.id}`);
+    // Call the target service to perform bulk operations
+    const response = await axios.post(
+      `${targetUrl}${endpoint}`,
+      {
+        updateData,
+        filter
+      },
+      {
+        headers: {
+          'x-tenant-id': task.tenantId,
+          'x-service-id': task.serviceId,
+          'content-type': 'application/json'
+        },
+        timeout: 30000 // 30 second timeout for bulk operations
+      }
+    );
+    
+    console.log(`Bulk update completed successfully for task: ${task.id}`, response.status);
   } catch (error) {
     console.error(`Failed to perform bulk update for task ${task.id}:`, error);
+    if (axios.isAxiosError(error)) {
+      console.error(`Status: ${error.response?.status}, Data: ${JSON.stringify(error.response?.data)}`);
+    }
     throw error;
   }
 }

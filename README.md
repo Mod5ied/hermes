@@ -71,6 +71,7 @@ The Hermes-Socket orchestrates communication relationships:
 - `APOLLO_API_URL`: URL for Apollo (Teaching & Curriculum) service
 - `ZEUS_API_URL`: URL for Zeus (Director Management) service
 - `HESTIA_API_URL`: URL for Hestia (Guardian Management) service
+- `HERA_API_URL`: URL for Hera (Staff Management) service
 
 ## Running the Service
 

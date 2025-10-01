@@ -147,10 +147,10 @@ async function processQueue() {
               const parsedTask = {
                 id: message.id,
                 serviceId: message.message.service,
-                type: message.message.type,
+                type: message.message.type as 'email_dispatch' | 'media_processing' | 'service_routing' | 'notification' | 'announcement' | 'bulk_update',
                 payload: JSON.parse(message.message.payload),
                 tenantId: message.message.tenantId,
-                timestamp: new Date(parseInt(message.message.timestamp))
+                createdAt: new Date(parseInt(message.message.timestamp))
               };
 
               console.log(`Processing task: ${parsedTask.id} from service: ${parsedTask.serviceId}`);

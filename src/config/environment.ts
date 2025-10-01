@@ -17,4 +17,5 @@ export const config = {
   apolloApiUrl: process.env.APOLLO_API_URL || 'http://localhost:3002',
   zeusApiUrl: process.env.ZEUS_API_URL || 'http://localhost:3003',
   hestiaApiUrl: process.env.HESTIA_API_URL || 'http://localhost:3004',
+  heraApiUrl: process.env.HERA_API_URL || 'http://localhost:3005',
 };
