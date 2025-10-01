@@ -1,0 +1,44 @@
+{
+  "name": "hermes",
+  "version": "1.0.0",
+  "description": "Communication service for SchoolPilot platform",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start:socket": "node -r dotenv/config dist/socket/server.js",
+    "start:queue": "node -r dotenv/config dist/queue/worker.js",
+    "dev:socket": "tsx watch src/socket/server.ts",
+    "dev:queue": "tsx watch src/queue/worker.ts",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.12.0",
+    "axios": "^1.6.0",
+    "dotenv": "^16.0.3",
+    "firebase-admin": "^11.11.0",
+    "hono": "^4.9.9",
+    "redis": "^4.6.7",
+    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.30.0",
+    "uuid": "^13.0.0",
+    "valibot": "^1.1.0",
+    "zeromq": "^6.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^18.11.18",
+    "jest": "^29.3.1",
+    "nodemon": "^2.0.20",
+    "supertest": "^6.3.3",
+    "ts-jest": "^29.1.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.0.0"
+  },
+  "keywords": [
+    "messaging",
+    "communications",
+    "websockets",
+    "microservice",
+    "schoolpilot"
+  ],
+  "author": "SchoolPilot",
+  "license": "MIT"
+}
